@@ -39,10 +39,10 @@ button{background:#8FAFC6;border:none;color:white;padding:14px 22px;font-size:18
 
 /* MOBILE ADJUSTMENTS */
 @media (max-width:768px){
-    .gallery{grid-template-columns:repeat(auto-fill,minmax(100%,1fr));gap:5px;padding:5px;} /* fit width */
+    .gallery{grid-template-columns:repeat(auto-fill,minmax(100%,1fr));gap:5px;padding:5px;}
     .gallery img,.gallery video{width:100%;height:auto;object-fit:cover;border-radius:12px;}
     #uploadBtn{padding:18px 24px;font-size:20px;}
-    #slideContainer{grid-template-columns:repeat(2,1fr);grid-auto-rows:200px;} /* fill screen on mobile */
+    #slideContainer{grid-template-columns:repeat(2,1fr);grid-auto-rows:200px;}
     #slideMessages{font-size:18px;}
     #messageForm input{width:90%;font-size:18px;}
     #messageForm button{padding:12px 18px;font-size:20px;}
@@ -55,6 +55,8 @@ button{background:#8FAFC6;border:none;color:white;padding:14px 22px;font-size:18
 <div id="monogram"><img src="DC_monogram.png"></div>
 <h1>Share Your Wedding Memories</h1>
 <button id="uploadBtn">Upload Photo / Video</button>
+<input type="file" id="mobileUpload" accept="image/*,video/*" capture="environment" style="display:none" multiple>
+
 <div class="gallery" id="gallery"></div>
 <hr class="divider">
 <h2>Guest Messages</h2>
@@ -80,13 +82,13 @@ button{background:#8FAFC6;border:none;color:white;padding:14px 22px;font-size:18
 <script>
 /* Firebase Config */
 const firebaseConfig = {
-  apiKey: "AIzaSyBvKxL28dYXqxKcxyDtNMvLwLkgbOB0Pp0",
-  authDomain: "weddingwall.firebaseapp.com",
-  databaseURL: "https://weddingwall-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "weddingwall",
-  storageBucket: "weddingwall.firebasestorage.app",
-  messagingSenderId: "1016901723685",
-  appId: "1:1016901723685:web:7d9e47da708a5837d9c1cc"
+apiKey:"AIzaSyBvKxL28dYXqxKcxyDtNMvLwLkgbOB0Pp0",
+authDomain:"weddingwall.firebaseapp.com",
+databaseURL:"https://weddingwall-default-rtdb.asia-southeast1.firebasedatabase.app",
+projectId:"weddingwall",
+storageBucket:"weddingwall.firebasestorage.app",
+messagingSenderId:"1016901723685",
+appId:"1:1016901723685:web:7d9e47da708a5837d9c1cc"
 };
 firebase.initializeApp(firebaseConfig);
 const db=firebase.database();
@@ -96,7 +98,7 @@ const params=new URLSearchParams(window.location.search);
 const isAdmin=params.get("admin")==="true";
 if(!isAdmin) document.getElementById("adminControls").style.display="none";
 
-/* Cloudinary Upload Widget */
+/* Cloudinary Widget */
 const widget=cloudinary.createUploadWidget({
 cloudName:"dnahmevrw",
 uploadPreset:"wedding_upload"
@@ -105,70 +107,82 @@ if(result.event==="success"){
 db.ref("media").push({url:result.info.secure_url,type:result.info.resource_type,likes:0});
 }
 });
-uploadBtn.onclick=()=>widget.open();
 
-/* Media Gallery */
-let mediaList=[];
-db.ref("media").on("child_added",snap=>{
-const data=snap.val();
-const key=snap.key;
-mediaList.push({url:data.url,type:data.type,key});
-const div=document.createElement("div");
-div.className="media-item";
-let el=data.type==="video"?document.createElement("video"):document.createElement("img");
-el.src=data.url;if(data.type==="video") el.controls=true;
-div.appendChild(el);
-
-/* Delete button for each media */
-if(isAdmin){
-const del=document.createElement("button");
-del.className="delete-btn";del.innerText="🗑️";
-del.onclick=()=>{if(confirm("Delete this media?")){db.ref("media/"+key).remove();div.remove();mediaList=mediaList.filter(m=>m.key!==key)}};
-div.appendChild(del);
+// Upload Button behavior
+const uploadBtn=document.getElementById("uploadBtn");
+uploadBtn.onclick=function(){
+if(/Mobi|Android/i.test(navigator.userAgent)){
+document.getElementById("mobileUpload").click();
+}else{
+widget.open();
+}
 }
 
-/* Likes */
-const likeContainer=document.createElement("div");likeContainer.className="like-container";
-const likeBtn=document.createElement("button");likeBtn.innerText="❤️";likeBtn.style.background="none";likeBtn.style.border="none";
+// Handle mobile gallery uploads
+document.getElementById("mobileUpload").addEventListener("change",function(event){
+const files=event.target.files;
+for(let i=0;i<files.length;i++){
+const file=files[i];
+const formData=new FormData();
+formData.append("file",file);
+formData.append("upload_preset","wedding_upload");
+fetch("https://api.cloudinary.com/v1_1/dnahmevrw/upload",{method:"POST",body:formData})
+.then(res=>res.json())
+.then(data=>{db.ref("media").push({url:data.secure_url,type:data.resource_type,likes:0});})
+.catch(err=>console.error("Upload error:",err));
+}
+});
+
+// Media Gallery
+let mediaList=[];
+db.ref("media").on("child_added",snap=>{
+const data=snap.val(); const key=snap.key;
+mediaList.push({url:data.url,type:data.type,key});
+const div=document.createElement("div"); div.className="media-item";
+let el=data.type==="video"?document.createElement("video"):document.createElement("img");
+el.src=data.url; if(data.type==="video") el.controls=true; div.appendChild(el);
+
+// Delete button for media
+if(isAdmin){
+const del=document.createElement("button"); del.className="delete-btn"; del.innerText="🗑️";
+del.onclick=()=>{if(confirm("Delete this media?")){db.ref("media/"+key).remove();div.remove();mediaList=mediaList.filter(m=>m.key!==key)}}; div.appendChild(del);
+}
+
+// Likes
+const likeContainer=document.createElement("div"); likeContainer.className="like-container";
+const likeBtn=document.createElement("button"); likeBtn.innerText="❤️"; likeBtn.style.background="none"; likeBtn.style.border="none";
 const likeCount=document.createElement("span");
 likeBtn.onclick=()=>db.ref("media/"+key+"/likes").transaction(v=>(v||0)+1);
 db.ref("media/"+key+"/likes").on("value",snap=>{likeCount.innerText=snap.val()||0;});
-likeContainer.appendChild(likeBtn);likeContainer.appendChild(likeCount);
-div.appendChild(likeContainer);
+likeContainer.appendChild(likeBtn); likeContainer.appendChild(likeCount); div.appendChild(likeContainer);
 
 gallery.prepend(div);
 });
 
-/* Messages */
-let messageList=[];
-let messageKeys=[];
+// Messages
+let messageList=[]; let messageKeys=[];
 function sendMessage(){
-const name=nameInput.value.trim();
-const text=messageInput.value.trim();
-if(!name || !text) return alert("Enter name and message");
-db.ref("messages").push({name,text});
-messageInput.value="";
+const name=nameInput.value.trim(); const text=messageInput.value.trim();
+if(!name||!text) return alert("Enter name and message");
+db.ref("messages").push({name,text}); messageInput.value="";
 }
 db.ref("messages").on("child_added",snap=>{
-const m=snap.val(); const key = snap.key;
+const m=snap.val(); const key=snap.key;
 messageList.push(m); messageKeys.push(key);
-const div=document.createElement("div");
-div.style.position="relative"; div.innerText=m.name+": "+m.text; div.style.textAlign="center";
+const div=document.createElement("div"); div.style.position="relative"; div.innerText=m.name+": "+m.text; div.style.textAlign="center";
 
-/* Admin delete button per message */
+// Admin delete per message
 if(isAdmin){
-    const del=document.createElement("button");
-    del.className="delete-btn"; del.innerText="🗑️";
-    del.style.position="absolute"; del.style.top="5px"; del.style.right="5px";
-    del.onclick=()=>{if(confirm("Delete this message?")){db.ref("messages/"+key).remove();div.remove();
-    messageList = messageList.filter((_,i)=>messageKeys[i]!==key); messageKeys = messageKeys.filter(k=>k!==key);}};
-    div.appendChild(del);
+const del=document.createElement("button"); del.className="delete-btn"; del.innerText="🗑️";
+del.style.position="absolute"; del.style.top="5px"; del.style.right="5px";
+del.onclick=()=>{if(confirm("Delete this message?")){db.ref("messages/"+key).remove();div.remove(); messageList=messageList.filter((_,i)=>messageKeys[i]!==key); messageKeys=messageKeys.filter(k=>k!==key);}};
+div.appendChild(del);
 }
 
 messages.prepend(div);
 });
 
-/* Slideshow Collage */
+// Slideshow Collage
 const slideContainer=document.getElementById("slideContainer");
 const slideMessagesDiv=document.getElementById("slideMessages");
 let slideIndex=0,tickerAnimation;
@@ -184,13 +198,13 @@ el.src=item.url;if(item.type==="video"){el.autoplay=true;el.loop=true;el.muted=t
 slideContainer.appendChild(el);setTimeout(()=>el.style.opacity=1,200);
 }
 slideIndex=(slideIndex+count)%mediaList.length;
-setTimeout(showSlide,12000);
+setTimeout(showSlide,13000); // slideshow duration per batch
 }
 
-/* Scrolling messages */
+/* Scrolling messages ticker */
 function initTicker(){
 slideMessagesDiv.innerHTML=""; if(messageList.length===0) return;
-let repeatedMsgs=""; messageList.forEach(m=>repeatedMsgs+=m.name+": "+m.text+" ✦ ");
+let repeatedMsgs=""; messageList.forEach(m=>repeatedMsgs+=m.name+": "+m.text+"  ✦  ");
 slideMessagesDiv.innerText=repeatedMsgs+repeatedMsgs;
 slideMessagesDiv.scrollLeft=0;
 if(tickerAnimation) cancelAnimationFrame(tickerAnimation);
@@ -201,9 +215,7 @@ if(slideMessagesDiv.scrollLeft>=slideMessagesDiv.scrollWidth/2) slideMessagesDiv
 tickerAnimation=requestAnimationFrame(scrollTicker);
 }
 
-startSlideshow.onclick=()=>{
-document.getElementById("slideshow").style.display="block"; showSlide(); initTicker();
-}
+startSlideshow.onclick=()=>{document.getElementById("slideshow").style.display="block"; showSlide(); initTicker();}
 closeSlideshow.onclick=()=>{document.getElementById("slideshow").style.display="none";}
 </script>
 </body>

@@ -204,7 +204,7 @@ setTimeout(showSlide,13000); // slideshow duration per batch
 /* Scrolling messages ticker */
 function initTicker(){
 slideMessagesDiv.innerHTML=""; if(messageList.length===0) return;
-let repeatedMsgs=""; messageList.forEach(m=>repeatedMsgs+=m.name+": "+m.text+"  ✦  ");
+let repeatedMsgs=""; messageList.forEach(m=>repeatedMsgs+=m.name+": "+m.text+" ✦ ");
 slideMessagesDiv.innerText=repeatedMsgs+repeatedMsgs;
 slideMessagesDiv.scrollLeft=0;
 if(tickerAnimation) cancelAnimationFrame(tickerAnimation);

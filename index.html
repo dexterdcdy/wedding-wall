@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wedding Memory Wall</title>
+<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://widget.cloudinary.com/v2.0/global/all.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+<style>
+body{margin:0;font-family:Inter,sans-serif;background:#fff8f0;text-align:center;}
+h1{font-family:"Great Vibes",cursive;font-size:48px;margin:10px;}
+h2{font-family:"Great Vibes",cursive;font-size:36px;margin:20px 0 10px;}
+button{background:#8FAFC6;border:none;color:white;padding:14px 22px;font-size:18px;border-radius:25px;cursor:pointer;}
+#uploadBtn{position:sticky;top:10px;z-index:100;width:90%;margin:10px auto;display:block;box-shadow:0 4px 10px rgba(0,0,0,.15);}
+#monogram img{width:120px;margin-top:20px;}
+
+/* GALLERY */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:5px;padding:10px;}
+.media-item{position:relative;overflow:hidden;}
+.media-item img,.media-item video{width:100%;height:100%;object-fit:cover;border-radius:10px;background:#000;}
+.like-container{position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.4);border-radius:20px;padding:3px 8px;color:white;display:flex;gap:5px;align-items:center;z-index:5;}
+.delete-btn{position:absolute;top:6px;right:6px;background:none;border:none;color:white;font-size:18px;cursor:pointer;z-index:10;}
+
+/* MESSAGES */
+#messages div{text-align:center;background:#fff0f5;margin:6px auto;padding:10px;border-radius:10px;width:90%;position:relative;font-size:16px;}
+#messageForm input{width:80%;padding:12px;margin:6px;border-radius:10px;border:1px solid #ccc;font-size:16px;}
+#messageForm button{margin-top:10px;font-size:18px;}
+.divider{margin:50px auto 30px auto;width:85%;border-top:1px solid #ddd;}
+
+/* SLIDESHOW */
+#slideshow{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:black;color:white;z-index:999;overflow:hidden;}
+#slideshowTitle{font-size:42px;margin-top:20px;text-align:center;}
+#slideContainer{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));grid-auto-rows:minmax(150px,1fr);gap:5px;width:95%;margin:auto;margin-top:25px;}
+#slideContainer img,#slideContainer video{width:100%;height:100%;object-fit:contain;border-radius:12px;opacity:0;transition:opacity 1s ease;}
+#slideMessages{position:absolute;bottom:25px;width:100%;white-space:nowrap;font-size:26px;overflow:hidden;text-align:center;}
+#closeSlideshow{position:absolute;top:15px;right:15px;font-size:20px;}
+
+/* MOBILE ADJUSTMENTS */
+@media (max-width:768px){
+    .gallery{grid-template-columns:repeat(auto-fill,minmax(100%,1fr));gap:5px;padding:5px;} /* fit width */
+    .gallery img,.gallery video{width:100%;height:auto;object-fit:cover;border-radius:12px;}
+    #uploadBtn{padding:18px 24px;font-size:20px;}
+    #slideContainer{grid-template-columns:repeat(2,1fr);grid-auto-rows:200px;} /* fill screen on mobile */
+    #slideMessages{font-size:18px;}
+    #messageForm input{width:90%;font-size:18px;}
+    #messageForm button{padding:12px 18px;font-size:20px;}
+    #adminControls button{padding:12px 16px;font-size:18px;margin:4px;}
+}
+</style>
+</head>
+<body>
+
+<div id="monogram"><img src="DC_monogram.png"></div>
+<h1>Share Your Wedding Memories</h1>
+<button id="uploadBtn">Upload Photo / Video</button>
+<div class="gallery" id="gallery"></div>
+<hr class="divider">
+<h2>Guest Messages</h2>
+<div id="messageForm">
+<input id="nameInput" placeholder="Your name"><br>
+<input id="messageInput" placeholder="Leave a message to the couple"><br>
+<button onclick="sendMessage()">Send</button>
+</div>
+<div id="messages"></div>
+<div id="adminControls">
+<button id="startSlideshow">Start Slideshow</button>
+<button id="downloadMessages">Download Messages</button>
+<button id="downloadMedia">Download Media</button>
+</div>
+
+<div id="slideshow">
+<button id="closeSlideshow">Exit</button>
+<div id="slideshowTitle">Our Wedding From Your Lens</div>
+<div id="slideContainer"></div>
+<div id="slideMessages"></div>
+</div>
+
+<script>
+/* Firebase Config */
+const firebaseConfig = {
+  apiKey: "AIzaSyBvKxL28dYXqxKcxyDtNMvLwLkgbOB0Pp0",
+  authDomain: "weddingwall.firebaseapp.com",
+  databaseURL: "https://weddingwall-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "weddingwall",
+  storageBucket: "weddingwall.firebasestorage.app",
+  messagingSenderId: "1016901723685",
+  appId: "1:1016901723685:web:7d9e47da708a5837d9c1cc"
+};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database();
+
+/* Admin detection */
+const params=new URLSearchParams(window.location.search);
+const isAdmin=params.get("admin")==="true";
+if(!isAdmin) document.getElementById("adminControls").style.display="none";
+
+/* Cloudinary Upload Widget */
+const widget=cloudinary.createUploadWidget({
+cloudName:"dnahmevrw",
+uploadPreset:"wedding_upload"
+},(error,result)=>{
+if(result.event==="success"){
+db.ref("media").push({url:result.info.secure_url,type:result.info.resource_type,likes:0});
+}
+});
+uploadBtn.onclick=()=>widget.open();
+
+/* Media Gallery */
+let mediaList=[];
+db.ref("media").on("child_added",snap=>{
+const data=snap.val();
+const key=snap.key;
+mediaList.push({url:data.url,type:data.type,key});
+const div=document.createElement("div");
+div.className="media-item";
+let el=data.type==="video"?document.createElement("video"):document.createElement("img");
+el.src=data.url;if(data.type==="video") el.controls=true;
+div.appendChild(el);
+
+/* Delete button for each media */
+if(isAdmin){
+const del=document.createElement("button");
+del.className="delete-btn";del.innerText="🗑️";
+del.onclick=()=>{if(confirm("Delete this media?")){db.ref("media/"+key).remove();div.remove();mediaList=mediaList.filter(m=>m.key!==key)}};
+div.appendChild(del);
+}
+
+/* Likes */
+const likeContainer=document.createElement("div");likeContainer.className="like-container";
+const likeBtn=document.createElement("button");likeBtn.innerText="❤️";likeBtn.style.background="none";likeBtn.style.border="none";
+const likeCount=document.createElement("span");
+likeBtn.onclick=()=>db.ref("media/"+key+"/likes").transaction(v=>(v||0)+1);
+db.ref("media/"+key+"/likes").on("value",snap=>{likeCount.innerText=snap.val()||0;});
+likeContainer.appendChild(likeBtn);likeContainer.appendChild(likeCount);
+div.appendChild(likeContainer);
+
+gallery.prepend(div);
+});
+
+/* Messages */
+let messageList=[];
+let messageKeys=[];
+function sendMessage(){
+const name=nameInput.value.trim();
+const text=messageInput.value.trim();
+if(!name || !text) return alert("Enter name and message");
+db.ref("messages").push({name,text});
+messageInput.value="";
+}
+db.ref("messages").on("child_added",snap=>{
+const m=snap.val(); const key = snap.key;
+messageList.push(m); messageKeys.push(key);
+const div=document.createElement("div");
+div.style.position="relative"; div.innerText=m.name+": "+m.text; div.style.textAlign="center";
+
+/* Admin delete button per message */
+if(isAdmin){
+    const del=document.createElement("button");
+    del.className="delete-btn"; del.innerText="🗑️";
+    del.style.position="absolute"; del.style.top="5px"; del.style.right="5px";
+    del.onclick=()=>{if(confirm("Delete this message?")){db.ref("messages/"+key).remove();div.remove();
+    messageList = messageList.filter((_,i)=>messageKeys[i]!==key); messageKeys = messageKeys.filter(k=>k!==key);}};
+    div.appendChild(del);
+}
+
+messages.prepend(div);
+});
+
+/* Slideshow Collage */
+const slideContainer=document.getElementById("slideContainer");
+const slideMessagesDiv=document.getElementById("slideMessages");
+let slideIndex=0,tickerAnimation;
+
+function showSlide(){
+if(mediaList.length===0) return;
+slideContainer.innerHTML="";
+const count=Math.min(4,mediaList.length);
+for(let i=0;i<count;i++){
+const item=mediaList[(slideIndex+i)%mediaList.length];
+let el=item.type==="video"?document.createElement("video"):document.createElement("img");
+el.src=item.url;if(item.type==="video"){el.autoplay=true;el.loop=true;el.muted=true;}
+slideContainer.appendChild(el);setTimeout(()=>el.style.opacity=1,200);
+}
+slideIndex=(slideIndex+count)%mediaList.length;
+setTimeout(showSlide,12000);
+}
+
+/* Scrolling messages */
+function initTicker(){
+slideMessagesDiv.innerHTML=""; if(messageList.length===0) return;
+let repeatedMsgs=""; messageList.forEach(m=>repeatedMsgs+=m.name+": "+m.text+" ✦ ");
+slideMessagesDiv.innerText=repeatedMsgs+repeatedMsgs;
+slideMessagesDiv.scrollLeft=0;
+if(tickerAnimation) cancelAnimationFrame(tickerAnimation);
+scrollTicker();
+}
+function scrollTicker(){slideMessagesDiv.scrollLeft+=1;
+if(slideMessagesDiv.scrollLeft>=slideMessagesDiv.scrollWidth/2) slideMessagesDiv.scrollLeft=0;
+tickerAnimation=requestAnimationFrame(scrollTicker);
+}
+
+startSlideshow.onclick=()=>{
+document.getElementById("slideshow").style.display="block"; showSlide(); initTicker();
+}
+closeSlideshow.onclick=()=>{document.getElementById("slideshow").style.display="none";}
+</script>
+</body>
+</html>
